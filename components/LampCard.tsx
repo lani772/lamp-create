@@ -1,7 +1,7 @@
 
-import React from 'react';
-import { Lamp } from '../types';
-import { Power, Lock, Unlock, Settings2, Trash2, Clock, Zap, FileCode, Wifi, WifiOff, Cpu } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Lamp, UserRole } from '../types';
+import { Power, Lock, Unlock, Settings2, Trash2, Clock, Wifi, WifiOff, User, Calendar, FileCode, RefreshCw } from 'lucide-react';
 
 interface LampCardProps {
   lamp: Lamp;
@@ -10,7 +10,13 @@ interface LampCardProps {
   onEdit?: (lamp: Lamp) => void;
   onDelete?: (id: number) => void;
   onShowCode?: (lamp: Lamp) => void;
+  onRegenerateKey?: (lamp: Lamp) => void;
+  onManageSchedule?: (lamp: Lamp) => void;
+  onManageAccess?: (lamp: Lamp) => void;
+  onClick?: (lamp: Lamp) => void;
+  userRole?: UserRole;
   variant?: 'admin' | 'user';
+  ownerName?: string;
 }
 
 export const LampCard: React.FC<LampCardProps> = ({ 
@@ -20,141 +26,227 @@ export const LampCard: React.FC<LampCardProps> = ({
   onEdit, 
   onDelete,
   onShowCode,
-  variant = 'admin'
+  onRegenerateKey,
+  onManageSchedule,
+  onManageAccess,
+  onClick,
+  userRole = 'viewer',
+  variant = 'admin',
+  ownerName
 }) => {
+  const [timeAgo, setTimeAgo] = useState('');
   const isOn = lamp.status;
   const isLocked = lamp.isLocked;
-  // Default to false if undefined, but maybe we want a 'checking' state? For now, treat undefined as offline or checking.
   const isOnline = lamp.isOnline === true; 
   
-  return (
-    <div className={`
-      relative group overflow-hidden rounded-3xl p-6 transition-all duration-300
-      ${isLocked 
-        ? 'bg-slate-900/60 border border-slate-700/30' // Locked state: darker, subtle
-        : isOn 
-          ? 'bg-gradient-to-br from-blue-900/40 to-slate-900/60 border border-blue-500/30 shadow-[0_0_30px_-5px_rgba(59,130,246,0.2)]' 
-          : 'bg-slate-800/40 border border-slate-700/50 hover:border-slate-600'
+  // Permission Logic
+  const canToggle = !isLocked && (userRole === 'super_admin' || userRole === 'admin' || userRole === 'operator');
+  const canModify = userRole === 'super_admin' || userRole === 'admin';
+
+  // Calculate Time Ago
+  useEffect(() => {
+    const calculateTimeAgo = () => {
+      if (!lamp.lastTurnedOn) {
+        setTimeAgo('Never');
+        return;
       }
-      backdrop-blur-xl
+      const diff = Date.now() - new Date(lamp.lastTurnedOn).getTime();
+      const minutes = Math.floor(diff / 60000);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+
+      if (minutes < 1) setTimeAgo('Just now');
+      else if (minutes < 60) setTimeAgo(`${minutes}m ago`);
+      else if (hours < 24) setTimeAgo(`${hours}h ago`);
+      else setTimeAgo(`${days}d ago`);
+    };
+
+    calculateTimeAgo();
+    const interval = setInterval(calculateTimeAgo, 60000);
+    return () => clearInterval(interval);
+  }, [lamp.lastTurnedOn]);
+
+  const powerTitle = isLocked 
+    ? 'Device Locked' 
+    : !canToggle 
+        ? 'Permission denied' 
+        : isOn 
+            ? 'Turn Off' 
+            : 'Turn On';
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onDelete) {
+      if (window.confirm(`Are you sure you want to delete "${lamp.name}"? This action cannot be undone.`)) {
+        onDelete(lamp.id);
+      }
+    }
+  };
+
+  const handleAction = (action: (() => void) | undefined, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (action) action();
+  };
+
+  return (
+    <div 
+      onClick={() => onClick && onClick(lamp)}
+      className={`
+      relative group overflow-hidden rounded-[2rem] p-6 transition-all duration-300 cursor-pointer
+      ${isLocked 
+        ? 'bg-slate-900 border border-slate-700' 
+        : 'bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-white/10 hover:border-white/20'
+      }
+      hover:shadow-2xl hover:scale-[1.02] backdrop-blur-3xl
     `}>
-      {/* Background Glow when on */}
-      {isOn && !isLocked && (
-        <div className="absolute -top-20 -right-20 w-40 h-40 bg-blue-500/20 blur-3xl rounded-full pointer-events-none" />
-      )}
-      
-      {/* Locked Overlay Pattern/Indicator */}
-      {isLocked && (
-         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBhdGggZD0iTTEgMUwyMCAyME0yMCAxTDEgMjAiIHN0cm9rZT0icmdiYSgyNTUsIDI1NSwgMjU1LCAwLjAzKSIgc3Ryb2tlLXdpZHRoPSIxIi8+PC9zdmc+')] opacity-20 pointer-events-none" />
+      {/* Dynamic Background Glows */}
+      {!isLocked && (
+        <>
+           <div className={`absolute -top-20 -left-20 w-60 h-60 rounded-full blur-[80px] transition-all duration-1000 ${isOn ? 'bg-green-500/20' : 'bg-red-500/10'}`}></div>
+           <div className={`absolute bottom-0 right-0 w-40 h-40 rounded-full blur-[60px] transition-all duration-1000 ${isOn ? 'bg-yellow-400/10' : 'bg-blue-500/10'}`}></div>
+        </>
       )}
 
-      <div className="flex justify-between items-start mb-6 relative z-10">
-        <div>
-          <h3 className={`text-lg font-bold mb-1 flex items-center gap-2 ${isLocked ? 'text-slate-400' : 'text-white'}`}>
-            {lamp.name}
-            {isLocked && <Lock className="w-3 h-3 text-amber-500" />}
-          </h3>
-          <div className="flex items-center gap-2 mt-1">
-             <div className={`flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${isOnline ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'}`}>
-                {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-                {isOnline ? 'ONLINE' : 'OFFLINE'}
-             </div>
-             <p className="text-xs font-mono text-slate-500">{lamp.ip}</p>
-          </div>
+      <div className="relative z-10 flex flex-col h-full justify-between min-h-[220px]">
+        {/* Top Section: Status & Info */}
+        <div className="flex justify-between items-start">
+           <div>
+              {/* Glowing Indicator */}
+              <div className={`
+                w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-all duration-500 shadow-lg
+                ${isOn 
+                  ? 'bg-gradient-to-br from-lime-400 to-green-600 shadow-[0_0_30px_rgba(74,222,128,0.5)]' 
+                  : 'bg-gradient-to-br from-red-800 to-slate-800 shadow-[0_0_15px_rgba(0,0,0,0.5)]'
+                }
+              `}>
+                 <div className={`w-12 h-12 rounded-full blur-sm opacity-50 ${isOn ? 'bg-white' : 'bg-black'}`}></div>
+              </div>
+
+              <h3 className={`text-2xl font-bold tracking-tight mb-1 ${isLocked ? 'text-slate-500' : 'text-white'}`}>
+                {lamp.name}
+              </h3>
+              
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-400">
+                   {isLocked ? (
+                      <span className="flex items-center gap-1 text-amber-500"><Lock className="w-3 h-3" /> Locked</span>
+                   ) : (
+                      <span className={isOn ? "text-lime-300" : "text-slate-500"}>{isOn ? "Active" : "Standby"}</span>
+                   )}
+                   <span className="text-slate-600">•</span>
+                   <span className="flex items-center gap-1">
+                      {isOnline ? <Wifi className="w-3 h-3 text-emerald-500" /> : <WifiOff className="w-3 h-3 text-red-500" />}
+                   </span>
+                </div>
+                {ownerName && (
+                  <div className="flex items-center gap-1 text-[10px] text-indigo-400">
+                    <User className="w-3 h-3" /> {ownerName}
+                  </div>
+                )}
+              </div>
+           </div>
+
+           {/* Admin Quick Actions (Top Right) */}
+           {canModify && variant === 'admin' && (
+              <div className="flex flex-col gap-2">
+                 {onLock && (
+                   <button 
+                     onClick={(e) => handleAction(() => onLock(lamp), e)}
+                     className={`p-2 rounded-full transition-all ${isLocked ? 'bg-amber-500/20 text-amber-500' : 'bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white'}`}
+                     title={isLocked ? "Unlock Device" : "Lock Device"}
+                   >
+                     {isLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                   </button>
+                 )}
+
+                 {onManageAccess && (
+                    <button
+                        onClick={(e) => handleAction(() => onManageAccess(lamp), e)}
+                        className="p-2 rounded-full bg-white/5 text-slate-400 hover:bg-blue-500/20 hover:text-blue-400 transition-all"
+                        title="Manage Access"
+                    >
+                        <User className="w-4 h-4" />
+                    </button>
+                 )}
+
+                 {onManageSchedule && (
+                    <button
+                        onClick={(e) => handleAction(() => onManageSchedule(lamp), e)}
+                        className="p-2 rounded-full bg-white/5 text-slate-400 hover:bg-purple-500/20 hover:text-purple-400 transition-all"
+                        title="Schedules"
+                    >
+                        <Calendar className="w-4 h-4" />
+                    </button>
+                 )}
+                 
+                 {onShowCode && (
+                    <button
+                        onClick={(e) => handleAction(() => onShowCode(lamp), e)}
+                        className="p-2 rounded-full bg-white/5 text-slate-400 hover:bg-emerald-500/20 hover:text-emerald-400 transition-all"
+                        title="Firmware Code"
+                    >
+                        <FileCode className="w-4 h-4" />
+                    </button>
+                 )}
+
+                 {onRegenerateKey && (
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            if(window.confirm("Regenerate API Key? This will disconnect the device until firmware is updated.")) {
+                                onRegenerateKey(lamp); // Using the prop function, not recursive
+                            }
+                        }}
+                        className="p-2 rounded-full bg-white/5 text-slate-400 hover:bg-yellow-500/20 hover:text-yellow-400 transition-all"
+                        title="Regenerate Key"
+                    >
+                        <RefreshCw className="w-4 h-4" />
+                    </button>
+                 )}
+
+                 {onDelete && (
+                   <button 
+                     onClick={handleDelete}
+                     className="p-2 rounded-full bg-white/5 text-slate-400 hover:bg-red-500/20 hover:text-red-400 transition-all"
+                     title="Delete Device"
+                   >
+                     <Trash2 className="w-4 h-4" />
+                   </button>
+                 )}
+              </div>
+           )}
         </div>
-        
-        <button
-          onClick={() => !isLocked && onToggle(lamp)}
-          disabled={isLocked}
-          title={isLocked ? "Device is locked" : isOn ? "Turn Off" : "Turn On"}
-          className={`
-            w-12 h-12 rounded-full flex items-center justify-center transition-all duration-300
-            ${isLocked
-               ? 'bg-slate-800/50 text-slate-600 border border-slate-700/50 cursor-not-allowed' // Locked styling
-               : isOn 
-                 ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/40 hover:bg-blue-400 cursor-pointer' 
-                 : 'bg-slate-700 text-slate-400 hover:bg-slate-600 hover:text-white cursor-pointer shadow-lg'
-            }
-          `}
-        >
-          {isLocked ? <Lock className="w-5 h-5" /> : <Power className="w-6 h-6" />}
-        </button>
+
+        {/* Bottom Section: Big Toggle Button */}
+        <div className="mt-6">
+           <button
+             onClick={(e) => canToggle ? handleAction(() => onToggle(lamp), e) : e.stopPropagation()}
+             disabled={!canToggle}
+             className={`
+               w-full py-4 rounded-xl font-bold text-sm tracking-widest uppercase transition-all duration-300 flex items-center justify-center gap-2 shadow-xl
+               ${isLocked
+                 ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                 : isOn
+                   ? 'bg-gradient-to-r from-lime-500 to-green-600 text-black hover:scale-[1.02] shadow-green-900/20'
+                   : 'bg-gradient-to-r from-red-600 to-red-800 text-white hover:scale-[1.02] shadow-red-900/20'
+               }
+             `}
+             title={powerTitle}
+           >
+              {isLocked ? <Lock className="w-4 h-4" /> : <Power className="w-4 h-4" />}
+              {isLocked ? 'LOCKED' : isOn ? 'ON' : 'OFF'}
+           </button>
+           
+           <div className="mt-3 flex justify-between items-center px-1">
+              <span className={`text-[10px] font-medium ${isOn ? 'text-lime-300/70' : 'text-slate-500'}`}>
+                {isOn ? 'Glowing softly' : 'Power off'}
+              </span>
+              <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                 <Clock className="w-3 h-3" /> {timeAgo}
+              </span>
+           </div>
+        </div>
       </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3 mb-6 relative z-10">
-        <div className={`rounded-xl p-3 border ${isLocked ? 'bg-slate-900/30 border-slate-800' : 'bg-slate-900/50 border-white/5'}`}>
-          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-            <Clock className="w-3 h-3" /> Runtime
-          </div>
-          <div className={`text-sm font-medium ${isLocked ? 'text-slate-500' : 'text-slate-200'}`}>
-            {Math.floor(lamp.totalHours)}h {Math.round((lamp.totalHours % 1) * 60)}m
-          </div>
-        </div>
-        <div className={`rounded-xl p-3 border ${isLocked ? 'bg-slate-900/30 border-slate-800' : 'bg-slate-900/50 border-white/5'}`}>
-          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-            <Cpu className="w-3 h-3" /> GPIO
-          </div>
-          <div className={`text-sm font-medium ${isLocked ? 'text-slate-500' : 'text-slate-200'}`}>
-            Pin {lamp.pin}
-          </div>
-        </div>
-      </div>
-
-      {/* Controls - Only show in admin variant */}
-      {variant === 'admin' && (
-        <div className="flex items-center justify-between pt-4 border-t border-white/5 relative z-10">
-          <div className="flex gap-2">
-            {onLock && (
-              <button 
-                onClick={() => onLock(lamp)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-all text-xs font-medium border ${
-                  isLocked 
-                    ? 'bg-amber-500/10 text-amber-500 border-amber-500/20 hover:bg-amber-500/20' 
-                    : 'bg-transparent text-slate-400 border-transparent hover:bg-slate-700 hover:text-white'
-                }`}
-                title={isLocked ? "Click to unlock device" : "Click to lock device"}
-              >
-                {isLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-                <span>{isLocked ? 'Locked' : 'Unlocked'}</span>
-              </button>
-            )}
-            
-            <div className="w-px h-6 bg-slate-700/50 mx-1"></div>
-
-            {onEdit && (
-              <button 
-                onClick={() => onEdit(lamp)}
-                disabled={isLocked}
-                className={`p-2 rounded-lg transition-colors ${isLocked ? 'text-slate-600 cursor-not-allowed' : 'hover:bg-slate-700 text-slate-400 hover:text-white'}`}
-                title="Edit Settings"
-              >
-                <Settings2 className="w-4 h-4" />
-              </button>
-            )}
-
-            {onShowCode && (
-              <button
-                onClick={() => onShowCode(lamp)}
-                className="p-2 rounded-lg hover:bg-indigo-500/20 text-slate-400 hover:text-indigo-400 transition-colors"
-                title="Get Integration Code"
-              >
-                <FileCode className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-          
-          {onDelete && (
-            <button 
-              onClick={() => onDelete(lamp.id)}
-              className="p-2 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-400 transition-colors"
-              title="Delete Lamp"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 };
