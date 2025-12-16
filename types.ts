@@ -17,6 +17,11 @@ export interface Controller {
   model: 'ESP32' | 'ESP8266';
   isOnline: boolean;
   ownerId: number;
+  // Diagnostics
+  lastError?: string;
+  signalStrength?: number; // RSSI
+  uptime?: number;
+  lastSeen?: string;
 }
 
 export interface Lamp {
@@ -68,7 +73,7 @@ export interface WifiConfig {
   device: 'router' | 'phone' | 'direct';
 }
 
-export type ViewState = 'dashboard' | 'users' | 'settings' | 'wifi' | 'admins' | 'requests' | 'profile';
+export type ViewState = 'dashboard' | 'users' | 'settings' | 'wifi' | 'admins' | 'requests' | 'profile' | 'diagnostics';
 
 export interface ToastNotification {
   id: string;
